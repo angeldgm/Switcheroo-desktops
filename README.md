@@ -43,14 +43,6 @@ Anonymize window titles        | `Alt + P`         | Toggles anonymization of wi
 - `Shift + Mouse Wheel` scrolls through columns.
 - `Shift + Click` and `Ctrl + Click` select windows for multi-selection (for closing multiple windows at once).
 
-## Column Mode
-
-Switcheroo displays windows in five columns:
-
-- The center column shows the 10 most recently used windows and all windows not shown in other columns.
-- The three columns to the left show windows from the three most common applications.
-- The rightmost column shows pinned windows (defined in _Options_).
-
 ## Todo List
 
 - [x] Performance improvements regarding UI Automation -> Disabled UIA access.
@@ -62,7 +54,7 @@ Switcheroo displays windows in five columns:
   - [x] Set/unset icon for highlighting.
   - [x] Prioritize rules based on order.
 - [ ] Tagging windows - https://github.com/kvakulo/Switcheroo/issues/174
-- [ ] Support for Virtual Desktops
+- [x] Support for Virtual Desktops
 - [ ] Assign shortcut - https://github.com/elig0n/Switcheroo/issues/30
 - [ ] Add option to disable stand-alone `ALT` keypress to switch to selected window. Currently this is enabled by default, but a bit surprising (see: https://github.com/kvakulo/Switcheroo/pull/128)
 - [ ] Theme support.
@@ -71,7 +63,7 @@ Switcheroo displays windows in five columns:
 
 ## New features in Version 1.0
 
-- [X] Virtual desktops support
+- [x] Virtual desktops support
 
 ## New features in Version 0.9.7
 
