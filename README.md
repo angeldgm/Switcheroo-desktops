@@ -1,4 +1,4 @@
-<img src="icons/logo.png" alt="Switcheroo" width="48px" height="48px"> SwitcherooDesktops [![Build and Release](https://github.com/coezbek/Switcheroo/actions/workflows/release.yml/badge.svg)](https://github.com/coezbek/Switcheroo/actions/workflows/release.yml)
+<img src="icons/logo.png" alt="Switcheroo" width="48px" height="48px"> SwitcherooDesktops [![Build and Release](https://github.com/angeldgm/Switcheroo-desktops/actions/workflows/release.yml/badge.svg)](https://github.com/coezbek/Switcheroo/actions/workflows/release.yml)
 ==========
 
 SwitcherooDesktops is Alt-Tab replacement for Windows.
