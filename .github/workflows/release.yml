@@ -145,7 +145,7 @@ jobs:
           "PORTABLE_PATH=$portDst"  | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           target_commitish: ${{ github.sha }}
           draft: ${{ env.IS_DRAFT == 'true' }}
