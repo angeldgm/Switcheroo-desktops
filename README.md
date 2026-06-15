@@ -61,7 +61,7 @@ Anonymize window titles        | `Alt + P`         | Toggles anonymization of wi
 - [ ] Fix update checker
 - [ ] Proper logging/crash reporting
 
-## New features in Version 1.0
+## New features in Version 0.9.8
 
 - [x] Virtual desktops support
 
