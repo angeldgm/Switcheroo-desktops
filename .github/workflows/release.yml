@@ -88,24 +88,37 @@ jobs:
       - name: Build Installers
         run: msbuild Installer\Build.xml /t:Main /p:Configuration=Release /p:Platform="AnyCPU"
 
-      - name: Build changelog from conventional commits for tagged release
-        id: changelog_tag
-        uses: requarks/changelog-action@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          token: ${{ github.token }}
-          tag: ${{ github.ref_name }}
-          writeToFile: false
-
+      - name: Find last tag
+        id: lasttag
+        shell: bash
+        run: |
+          echo "tag=$(git describe --tags --abbrev=0 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+      
       - name: Build changelog from conventional commits for draft release
         id: changelog_draft
+        if: ${{ !startsWith(github.ref, 'refs/tags/') && steps.lasttag.outputs.tag != '' }}
         uses: requarks/changelog-action@v1
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           token: ${{ github.token }}
-          fromTag: ${{ github.sha }}
-          toTag: ${{ env.LAST_TAG }}
+          fromTag: ${{ steps.lasttag.outputs.tag }}
+          toTag: ${{ github.sha }}
           writeToFile: false
+      
+      - name: Prepare release body
+        id: release_body
+        shell: bash
+        run: |
+          BODY="${{ steps.changelog_tag.outputs.changes }}${{ steps.changelog_draft.outputs.changes }}"
+      
+          if [ -z "$BODY" ]; then
+            BODY="$(git log -1 --pretty=%B)"
+          fi
+      
+          {
+            echo 'body<<EOF'
+            echo "$BODY"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
 
       - name: Rename artifacts with version
         shell: pwsh
@@ -134,7 +147,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          # tag_name: ${{ env.VERSION }} # Use existing tag for official releases
           target_commitish: ${{ github.sha }}
           draft: ${{ env.IS_DRAFT == 'true' }}
           files: |
@@ -143,6 +155,6 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: false
           name: ${{ env.RELEASE_NAME }}
-          body: ${{ steps.changelog_tag.outputs.changes }}${{ steps.changelog_draft.outputs.changes }}
+          body: ${{ steps.release_body.outputs.body }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
