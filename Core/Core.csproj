@@ -54,6 +54,7 @@
     <Compile Include="MonitorHelper.cs" />
     <Compile Include="WindowFilterer.cs" />
     <Compile Include="WindowFinder.cs" />
+    <Compile Include="VirtualDesktopManager.cs" />
     <Compile Include="MainWindowUtils.cs" />
     <Compile Include="Matchers\ContainsMatcher.cs" />
     <Compile Include="Matchers\IMatcher.cs" />

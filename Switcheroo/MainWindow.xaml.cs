@@ -75,24 +75,20 @@ namespace Switcheroo
         private SystemWindow _foregroundWindow;
         private bool _altTabAutoSwitch;
         private MonitorInfo _currentMonitor; // Cache the current monitor for reloads
+        private readonly VirtualDesktopManager _virtualDesktopManager = new VirtualDesktopManager();
+        private readonly List<DesktopColumn> _desktopColumns = new List<DesktopColumn>();
         private HighlightService _highlightService;
         private HighlightConfigWindow _highlightConfigWindow;
 
-        // New collections for each column
-        private ObservableCollection<AppWindowViewModel> _listLeft1;
-        private ObservableCollection<AppWindowViewModel> _listLeft2;
-        private ObservableCollection<AppWindowViewModel> _listLeft3;
-        private ObservableCollection<AppWindowViewModel> _listCenter;
-        private ObservableCollection<AppWindowViewModel> _listRight;
-
-        // For navigation
-        private readonly List<PerformanceListBox> _listBoxes;
-        private List<PerformanceListBox> _visibleListBoxes;
+        private readonly List<PerformanceListBox> _listBoxes = new List<PerformanceListBox>();
+        private List<PerformanceListBox> _visibleListBoxes = new List<PerformanceListBox>();
         private int _activeColumnIndex = 0;
 
         public MainWindow()
         {
             InitializeComponent();
+
+            WindowState = WindowState.Maximized;
 
             // Initialize Highlight Service
             _highlightService = new HighlightService();
@@ -104,20 +100,7 @@ namespace Switcheroo
                 }
             };
 
-            _listLeft1 = new ObservableCollection<AppWindowViewModel>();
-            _listLeft2 = new ObservableCollection<AppWindowViewModel>();
-            _listLeft3 = new ObservableCollection<AppWindowViewModel>();
-            _listCenter = new ObservableCollection<AppWindowViewModel>();
-            _listRight = new ObservableCollection<AppWindowViewModel>();
-            
-            _listBoxes = new List<PerformanceListBox> { ListBoxLeft1, ListBoxLeft2, ListBoxLeft3, ListBoxCenter, ListBoxRight };
-            _visibleListBoxes = new List<PerformanceListBox>();
-
-            ListBoxLeft1.ItemsSource = _listLeft1;
-            ListBoxLeft2.ItemsSource = _listLeft2;
-            ListBoxLeft3.ItemsSource = _listLeft3;
-            ListBoxCenter.ItemsSource = _listCenter;
-            ListBoxRight.ItemsSource = _listRight;
+            RebuildDesktopColumns();
 
             SetUpKeyBindings();
 
@@ -144,6 +127,24 @@ namespace Switcheroo
         protected override AutomationPeer OnCreateAutomationPeer()
         {
             return new SilentWindowAutomationPeer(this);
+        }
+
+        private class DesktopColumn
+        {
+            public DesktopColumn(VirtualDesktop desktop, ObservableCollection<AppWindowViewModel> windows, PerformanceListBox listBox, ColumnDefinition columnDefinition, DockPanel panel)
+            {
+                Desktop = desktop;
+                Windows = windows;
+                ListBox = listBox;
+                ColumnDefinition = columnDefinition;
+                Panel = panel;
+            }
+
+            public VirtualDesktop Desktop { get; private set; }
+            public ObservableCollection<AppWindowViewModel> Windows { get; set; }
+            public PerformanceListBox ListBox { get; private set; }
+            public ColumnDefinition ColumnDefinition { get; private set; }
+            public DockPanel Panel { get; private set; }
         }
 
         /// =================================
@@ -383,6 +384,82 @@ namespace Switcheroo
             return null;
         }
 
+        private void RebuildDesktopColumns()
+        {
+            var desktops = _virtualDesktopManager.GetDesktops();
+
+            ColumnsGrid.ColumnDefinitions.Clear();
+            ColumnsGrid.Children.Clear();
+            _desktopColumns.Clear();
+            _listBoxes.Clear();
+
+            for (int i = 0; i < desktops.Count; i++)
+            {
+                var desktop = desktops[i];
+                var columnDefinition = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
+                ColumnsGrid.ColumnDefinitions.Add(columnDefinition);
+
+                var panel = new DockPanel { LastChildFill = true };
+                Grid.SetColumn(panel, i);
+
+                var header = new TextBlock
+                {
+                    Text = desktop.Name,
+                    FontSize = 12,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(4, 4, 4, 2),
+                    Foreground = TryFindResource("PrimaryTextBrush") as Brush ?? Brushes.Black
+                };
+                DockPanel.SetDock(header, Dock.Top);
+                panel.Children.Add(header);
+
+                var listBox = new PerformanceListBox
+                {
+                    Name = "ListBoxDesktop" + i,
+                    Style = ColumnsGrid.TryFindResource("ColumnListBoxStyle") as Style,
+                    ItemTemplate = ColumnsGrid.TryFindResource("WindowItemTemplate") as DataTemplate,
+                    ToolTip = desktop.Name
+                };
+                listBox.GotFocus += ListBox_GotFocus;
+                panel.Children.Add(listBox);
+
+                ColumnsGrid.Children.Add(panel);
+
+                var windows = new ObservableCollection<AppWindowViewModel>();
+                listBox.ItemsSource = windows;
+
+                _desktopColumns.Add(new DesktopColumn(desktop, windows, listBox, columnDefinition, panel));
+                _listBoxes.Add(listBox);
+            }
+
+            _visibleListBoxes = _listBoxes.Where(lb => lb.Visibility == Visibility.Visible).ToList();
+        }
+
+        private bool RebuildDesktopColumnsIfNeeded()
+        {
+            var desktops = _virtualDesktopManager.GetDesktops();
+
+            bool needsRebuild = _desktopColumns.Count != desktops.Count;
+            if (!needsRebuild)
+            {
+                for (int i = 0; i < desktops.Count; i++)
+                {
+                    if (_desktopColumns[i].Desktop.Id != desktops[i].Id)
+                    {
+                        needsRebuild = true;
+                        break;
+                    }
+                }
+            }
+
+            if (needsRebuild)
+            {
+                RebuildDesktopColumns();
+            }
+
+            return needsRebuild;
+        }
+
         private void PreloadData()
         {
             // This creates the window list and fetches icons into the MemoryCache
@@ -402,6 +479,17 @@ namespace Switcheroo
         private void LoadData(InitialFocus focus, MonitorInfo monitor)
         {
             bool isReload = this.IsVisible;
+            var selectedWindowHandle = GetSelectedWindowHandle();
+            var activeDesktopId = GetActiveDesktopId();
+
+            if (RebuildDesktopColumnsIfNeeded() && isReload && activeDesktopId.HasValue)
+            {
+                int activeDesktopIndex = _desktopColumns.FindIndex(c => c.Desktop.Id == activeDesktopId.Value);
+                if (activeDesktopIndex >= 0)
+                {
+                    _activeColumnIndex = activeDesktopIndex;
+                }
+            }
 
             if (monitor == null)
             {
@@ -414,32 +502,9 @@ namespace Switcheroo
                 _currentMonitor = monitor;
             }
 
-            // 1. Capture State for ALL ListBoxes (Selection & Index)
-            var selectionState = new Dictionary<int, IntPtr>();
-            var indexState = new Dictionary<int, int>();
-
-            if (isReload)
-            {
-                for (int i = 0; i < _listBoxes.Count; i++)
-                {
-                    if (_listBoxes[i].SelectedItem is AppWindowViewModel vm)
-                    {
-                        selectionState[i] = vm.HWnd;
-                        indexState[i] = _listBoxes[i].SelectedIndex;
-                    }
-                }
-            }
-
-            // Capture which ListBox instance was active
-            PerformanceListBox activeListBoxInstance = null;
-            if (_visibleListBoxes.Count > 0 && _activeColumnIndex >= 0 && _activeColumnIndex < _visibleListBoxes.Count)
-            {
-                activeListBoxInstance = _visibleListBoxes[_activeColumnIndex];
-            }
-
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            // 2. Fetch Windows
+            // 1. Fetch Windows
             _unfilteredWindowList = new WindowFinder().GetWindows().Select(window =>
             {
                 var vm = new AppWindowViewModel(window);
@@ -457,103 +522,38 @@ namespace Switcheroo
 
             long tFormat = sw.ElapsedMilliseconds;
 
-            var tmpLeft1 = new List<AppWindowViewModel>();
-            var tmpLeft2 = new List<AppWindowViewModel>();
-            var tmpLeft3 = new List<AppWindowViewModel>();
-            var tmpCenter = new List<AppWindowViewModel>();
-            var tmpRight = new List<AppWindowViewModel>();
+            var desktopWindowLists = _desktopColumns.ToDictionary(c => c.Desktop.Id, c => new List<AppWindowViewModel>());
+            var unmatchedWindows = new List<AppWindowViewModel>();
 
-            var handledHwnds = new HashSet<IntPtr>();
-
-            var pinnedProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (Settings.Default.PinnedProcesses != null)
+            foreach (var window in _unfilteredWindowList)
             {
-                foreach (string process in Settings.Default.PinnedProcesses)
+                var desktopId = GetWindowDesktopId(window.HWnd);
+                if (desktopId.HasValue && desktopWindowLists.ContainsKey(desktopId.Value))
                 {
-                    if (!string.IsNullOrWhiteSpace(process))
-                    {
-                        pinnedProcesses.Add(process.Trim().ToLowerInvariant());
-                    }
+                    desktopWindowLists[desktopId.Value].Add(window);
+                }
+                else
+                {
+                    unmatchedWindows.Add(window);
                 }
             }
 
-            var rightWindows = _unfilteredWindowList
-                .Where(w => pinnedProcesses.Contains(w.ProcessTitle.ToLowerInvariant()))
-                .ToList();
-            foreach (var window in rightWindows)
+            if (unmatchedWindows.Count > 0 && _desktopColumns.Count > 0)
             {
-                tmpRight.Add(window);
-                handledHwnds.Add(window.HWnd);
+                desktopWindowLists[_desktopColumns[0].Desktop.Id].AddRange(unmatchedWindows);
             }
-
-            var remainingForTopApps = _unfilteredWindowList.Where(w => !handledHwnds.Contains(w.HWnd)).ToList();
-            var topApps = remainingForTopApps
-                .GroupBy(w => w.ProcessTitle)
-                .OrderByDescending(g => g.Count())
-                .ThenBy(g => g.Key)
-                .Take(Settings.Default.NumberOfAppColumns)
-                .ToList();
 
             long tGrouping = sw.ElapsedMilliseconds;
-
-            var appColumnTargetLists = new[] { tmpLeft1, tmpLeft2, tmpLeft3 };
-            var min_number_of_windows_for_own_column = 0;
-
-            for (int i = 0; i < topApps.Count; i++)
-            {
-                var appGroup = topApps[i];
-
-                // Only give an app its own column if it meets the minimum window count.
-                if (appGroup.Count() >= min_number_of_windows_for_own_column)
-                {
-                    int targetListIndex = (appColumnTargetLists.Length - 1) - i;
-                    if (targetListIndex >= 0)
-                    {
-                        var targetList = appColumnTargetLists[targetListIndex];
-                        foreach (var window in appGroup)
-                        {
-                            targetList.Add(window);
-                            handledHwnds.Add(window.HWnd);
-                        }
-                    }
-                }
-            }
-
-            var first10Windows = _unfilteredWindowList.Take(10);
-            var first10Set = new HashSet<IntPtr>(first10Windows.Select(w => w.HWnd));
-
-            long tAppColumns = sw.ElapsedMilliseconds;
-
-            var remainingForCenter = _unfilteredWindowList.Where(
-                w => first10Set.Contains(w.HWnd)
-                || !handledHwnds.Contains(w.HWnd)
-                || w == firstWindow
-            );
-            
-            // Add remaining windows to center temp list
-            tmpCenter.AddRange(remainingForCenter);
-
-            long tWindowToColumnAssignment = sw.ElapsedMilliseconds;
 
             _windowCloser = new WindowCloser();
 
             long tWindowCloser = sw.ElapsedMilliseconds;
 
-            // This was slightly faster than adding them individually and relying on ObservableCollection's notifications.
-            _listLeft1 = new ObservableCollection<AppWindowViewModel>(tmpLeft1);
-            ListBoxLeft1.ItemsSource = _listLeft1;
-
-            _listLeft2 = new ObservableCollection<AppWindowViewModel>(tmpLeft2);
-            ListBoxLeft2.ItemsSource = _listLeft2;
-
-            _listLeft3 = new ObservableCollection<AppWindowViewModel>(tmpLeft3);
-            ListBoxLeft3.ItemsSource = _listLeft3;
-
-            _listCenter = new ObservableCollection<AppWindowViewModel>(tmpCenter);
-            ListBoxCenter.ItemsSource = _listCenter;
-
-            _listRight = new ObservableCollection<AppWindowViewModel>(tmpRight);
-            ListBoxRight.ItemsSource = _listRight;
+            foreach (var column in _desktopColumns)
+            {
+                column.Windows = new ObservableCollection<AppWindowViewModel>(desktopWindowLists[column.Desktop.Id]);
+                column.ListBox.ItemsSource = column.Windows;
+            }
 
             long tBinding = sw.ElapsedMilliseconds;
 
@@ -591,75 +591,11 @@ namespace Switcheroo
 
             // 3. Restore Selection for ALL columns
             long tBeforeSelection = sw.ElapsedMilliseconds;
-            for (int i = 0; i < _listBoxes.Count; i++)
-            {
-                var lb = _listBoxes[i];
-                var collection = lb.ItemsSource as ObservableCollection<AppWindowViewModel>;
-                
-                // Skip if empty (Layout update above will have collapsed it, but just in case)
-                if (collection == null || collection.Count == 0) continue;
-
-                bool restored = false;
-
-                // Try to find exact HWnd match
-                if (selectionState.TryGetValue(i, out IntPtr hwnd))
-                {
-                    var match = collection.FirstOrDefault(w => w.HWnd == hwnd);
-                    if (match != null)
-                    {
-                        lb.SelectedItem = match;
-                        restored = true;
-                    }
-                }
-
-                // If exact match failed (item moved columns) AND we are just reloading (Pin/Unpin):
-                // Keep the selection at the same index so the list doesn't look empty/reset.
-                if (!restored && isReload)
-                {
-                    if (indexState.TryGetValue(i, out int oldIndex))
-                    {
-                        int newIndex = Math.Min(oldIndex, collection.Count - 1);
-                        lb.SelectedIndex = Math.Max(0, newIndex);
-                    }
-                }
-            }
+            RestoreSelectionAfterLoad(selectedWindowHandle, isReload);
             long tAfterSelection = sw.ElapsedMilliseconds;
 
             // 4. Determine Active Column & Focus
-            int newActiveIndex = -1;
-
-            if (isReload)
-            {
-                // Try to keep the same listbox active if it is still visible
-                if (activeListBoxInstance != null && activeListBoxInstance.Visibility == Visibility.Visible)
-                {
-                    newActiveIndex = _listBoxes.IndexOf(activeListBoxInstance);
-                }
-                else
-                {
-                    // Fallback to Center if the active column disappeared (e.g. Unpinned last item in Right)
-                    newActiveIndex = _listBoxes.IndexOf(ListBoxCenter);
-                }
-            }
-            else
-            {
-                // Fresh Open (Alt-Tab): Always activate Center
-                newActiveIndex = _listBoxes.IndexOf(ListBoxCenter);
-
-                // FIX: Start at 2nd position (Index 1) for Alt-Tab (NextItem)
-                // This keeps current window at Index 0, and selects the "previous" window at Index 1.
-                if (ListBoxCenter.Items.Count > 1 && focus == InitialFocus.NextItem)
-                {
-                    ListBoxCenter.SelectedIndex = 1;
-                }
-                else if (ListBoxCenter.Items.Count > 0)
-                {
-                    // Shift+Tab -> Wrap to bottom; otherwise Top.
-                    ListBoxCenter.SelectedIndex = (focus == InitialFocus.PreviousItem) 
-                        ? ListBoxCenter.Items.Count - 1 
-                        : 0;
-                }
-            }
+            int newActiveIndex = GetInitialActiveColumnIndex(isReload, firstWindow, focus);
             long tBeforeSetActiveColumn = sw.ElapsedMilliseconds;
 
             // Activate the calculated column
@@ -681,9 +617,8 @@ namespace Switcheroo
                 // [PROFILE] Output results
                 Console.WriteLine($"[PROFILE] LoadData timings (ms):" +
                                 $" FetchWindows={tGrouping}ms" +
-                                $" AppColumns={tAppColumns - tGrouping}ms" +
-                                $" WindowToColumn={tWindowToColumnAssignment - tAppColumns}ms" +
-                                $" WindowCloser={tWindowCloser - tWindowToColumnAssignment}ms" +
+                                $" DesktopGrouping={tGrouping - tFormat}ms" +
+                                $" WindowCloser={tWindowCloser - tGrouping}ms" +
                                 $" Binding={tBinding - tWindowCloser}ms" +
                                 $" Layout={tLayout - tBinding}ms" +
                                 $" SelectionRestore={tAfterSelection - tBeforeSelection}ms" +
@@ -710,9 +645,137 @@ namespace Switcheroo
         {
             return window1.HWnd == window2.HWnd || window1.Process.Id == window2.Process.Id;
         }
+
+        private Guid? GetActiveDesktopId()
+        {
+            if (_activeColumnIndex >= 0 && _activeColumnIndex < _desktopColumns.Count)
+            {
+                return _desktopColumns[_activeColumnIndex].Desktop.Id;
+            }
+
+            return null;
+        }
+
+        private IntPtr GetSelectedWindowHandle()
+        {
+            if (_visibleListBoxes.Count == 0 || _activeColumnIndex < 0 || _activeColumnIndex >= _visibleListBoxes.Count)
+            {
+                return IntPtr.Zero;
+            }
+
+            var selectedWindow = _visibleListBoxes[_activeColumnIndex].SelectedItem as AppWindowViewModel;
+            return selectedWindow != null ? selectedWindow.HWnd : IntPtr.Zero;
+        }
+
+        private Guid? GetWindowDesktopId(IntPtr hWnd)
+        {
+            try
+            {
+                return _virtualDesktopManager.GetWindowDesktopId(hWnd);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private int GetDesktopIndexForWindow(IntPtr hWnd)
+        {
+            var desktopId = GetWindowDesktopId(hWnd);
+            if (!desktopId.HasValue)
+            {
+                return 0;
+            }
+
+            int desktopIndex = _desktopColumns.FindIndex(c => c.Desktop.Id == desktopId.Value);
+            return desktopIndex >= 0 ? desktopIndex : 0;
+        }
+
+        private void RestoreSelectionAfterLoad(IntPtr selectedWindowHandle, bool isReload)
+        {
+            foreach (var column in _desktopColumns)
+            {
+                var collection = column.Windows;
+                if (collection == null || collection.Count == 0)
+                {
+                    continue;
+                }
+
+                if (selectedWindowHandle != IntPtr.Zero)
+                {
+                    var match = collection.FirstOrDefault(w => w.HWnd == selectedWindowHandle);
+                    if (match != null)
+                    {
+                        column.ListBox.SelectedItem = match;
+                        continue;
+                    }
+                }
+
+                if (isReload)
+                {
+                    int oldIndex = Math.Min(_activeColumnIndex, collection.Count - 1);
+                    column.ListBox.SelectedIndex = Math.Max(0, oldIndex);
+                }
+            }
+        }
+
+        private int GetInitialActiveColumnIndex(bool isReload, AppWindowViewModel firstWindow, InitialFocus focus)
+        {
+            int newActiveIndex;
+
+            if (isReload)
+            {
+                var activeDesktopId = GetActiveDesktopId();
+                if (activeDesktopId.HasValue)
+                {
+                    newActiveIndex = _desktopColumns.FindIndex(c => c.Desktop.Id == activeDesktopId.Value);
+                }
+                else
+                {
+                    newActiveIndex = _activeColumnIndex;
+                }
+            }
+            else
+            {
+                newActiveIndex = firstWindow != null ? GetDesktopIndexForWindow(firstWindow.HWnd) : 0;
+            }
+
+            if (newActiveIndex < 0 || newActiveIndex >= _listBoxes.Count)
+            {
+                newActiveIndex = 0;
+            }
+
+            if (_listBoxes[newActiveIndex].Items.Count == 0)
+            {
+                int firstNonEmptyIndex = _listBoxes.FindIndex(lb => lb.Items.Count > 0);
+                if (firstNonEmptyIndex >= 0)
+                {
+                    newActiveIndex = firstNonEmptyIndex;
+                }
+            }
+
+            var activeListBox = _listBoxes[newActiveIndex];
+            if (activeListBox.Items.Count > 1 && !isReload && focus == InitialFocus.NextItem)
+            {
+                activeListBox.SelectedIndex = 1;
+            }
+            else if (activeListBox.Items.Count > 0)
+            {
+                activeListBox.SelectedIndex = (!isReload && focus == InitialFocus.PreviousItem)
+                    ? activeListBox.Items.Count - 1
+                    : 0;
+            }
+
+            return newActiveIndex;
+        }
         
         private void SetActiveColumn(int index, InitialFocus focus = InitialFocus.NextItem, bool scrollIntoView = true)
         {
+            if (_listBoxes.Count == 0 || index < 0 || index >= _listBoxes.Count)
+            {
+                return;
+            }
+
             var targetListBox = _listBoxes[index];
             _visibleListBoxes.Clear();
             _visibleListBoxes.AddRange(_listBoxes.Where(lb => lb.Visibility == Visibility.Visible));
@@ -720,17 +783,15 @@ namespace Switcheroo
 
             if (visibleIndex < 0)
             {
-                // If the target column is not visible, default to the center column
-                targetListBox = ListBoxCenter;
-                visibleIndex = _visibleListBoxes.IndexOf(targetListBox);
-                if (visibleIndex < 0) // Fallback if center is somehow not visible
+                if (_visibleListBoxes.Count == 0)
                 {
-                    visibleIndex = 0;
+                    return;
                 }
+
+                visibleIndex = 0;
+                targetListBox = _visibleListBoxes[0];
             }
 
-            // Clear highlight from ALL listboxes to ensure no stale highlights remain.
-            // This fixes the issue where the center column stays highlighted when switching via Alt+~
             foreach (var listBox in _listBoxes)
             {
                 listBox.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
@@ -743,8 +804,6 @@ namespace Switcheroo
 
             if (currentListBox.Items.Count > 0)
             {
-                // If no item is selected, select one based on the focus direction.
-                // Otherwise, keep the current selection.
                 if (currentListBox.SelectedIndex == -1)
                 {
                     if (focus == InitialFocus.PreviousItem)
@@ -759,6 +818,26 @@ namespace Switcheroo
                 if (scrollIntoView)
                     ScrollSelectedItemIntoView();
             }
+        }
+
+        private int FindNextVisibleColumnWithItems(int startIndex)
+        {
+            if (_visibleListBoxes.Count == 0)
+            {
+                return 0;
+            }
+
+            int safeStart = Math.Min(Math.Max(startIndex, 0), _visibleListBoxes.Count - 1);
+            for (int offset = 0; offset < _visibleListBoxes.Count; offset++)
+            {
+                int candidateIndex = (safeStart + offset) % _visibleListBoxes.Count;
+                if (_visibleListBoxes[candidateIndex].Items.Count > 0)
+                {
+                    return candidateIndex;
+                }
+            }
+
+            return safeStart;
         }
 
         /// <summary>
@@ -807,37 +886,17 @@ namespace Switcheroo
         /// <returns>The total number of visible columns.</returns>
         private int ConfigureColumnLayout(double columnWidthInDips)
         {
-            int numAppColumns = Settings.Default.NumberOfAppColumns;
+            _visibleListBoxes.Clear();
 
-            var columnDefinitions = new[] { ColLeft1, ColLeft2, ColLeft3, ColCenter, ColRight };
-            var listBoxes = new[] { ListBoxLeft1, ListBoxLeft2, ListBoxLeft3, ListBoxCenter, ListBoxRight };
-
-            // Logic to determine if an app column should be visible
-            bool showLeft1 = numAppColumns >= 3 && _listLeft1.Any();
-            bool showLeft2 = numAppColumns >= 2 && _listLeft2.Any();
-            bool showLeft3 = numAppColumns >= 1 && _listLeft3.Any();
-            
-            var visibilityFlags = new[] { showLeft1, showLeft2, showLeft3, true, _listRight.Any() };
-
-            int visibleCount = 0;
-            for (int i = 0; i < columnDefinitions.Length; i++)
+            foreach (var column in _desktopColumns)
             {
-                if (visibilityFlags[i])
-                {
-                    columnDefinitions[i].Width = new GridLength(1, GridUnitType.Star);
-                    if (listBoxes[i].Visibility != Visibility.Visible)
-                        listBoxes[i].Visibility = Visibility.Visible;
-                    visibleCount++;
-                }
-                else
-                {
-                    columnDefinitions[i].Width = new GridLength(0);
-                    if (listBoxes[i].Visibility != Visibility.Collapsed)
-                        listBoxes[i].Visibility = Visibility.Collapsed;
-                }
+                column.ColumnDefinition.Width = new GridLength(1, GridUnitType.Star);
+                column.Panel.Visibility = Visibility.Visible;
+                column.ListBox.Visibility = Visibility.Visible;
+                _visibleListBoxes.Add(column.ListBox);
             }
 
-            return visibleCount;
+            return _visibleListBoxes.Count;
         }
 
         private void CenterWindow(MonitorInfo monitor)
@@ -866,12 +925,10 @@ namespace Switcheroo
                 Width = finalWidth;
             if (calculatedWidth > finalWidth)
             {
-                // Switch to star sizing if constrained
-                if (ColLeft1.Width.Value > 0) ColLeft1.Width = new GridLength(1, GridUnitType.Star);
-                if (ColLeft2.Width.Value > 0) ColLeft2.Width = new GridLength(1, GridUnitType.Star);
-                if (ColLeft3.Width.Value > 0) ColLeft3.Width = new GridLength(1, GridUnitType.Star);
-                ColCenter.Width = new GridLength(1, GridUnitType.Star);
-                if (ColRight.Width.Value > 0) ColRight.Width = new GridLength(1, GridUnitType.Star);
+                foreach (var column in _desktopColumns)
+                {
+                    column.ColumnDefinition.Width = new GridLength(1, GridUnitType.Star);
+                }
             }
             
             long tCalculateAndSetWidth = sw.ElapsedMilliseconds;
@@ -886,11 +943,13 @@ namespace Switcheroo
 
             // Find max items in any visible column to estimate height
             int maxItems = 0;
-            if (ListBoxLeft1.Visibility == Visibility.Visible) maxItems = Math.Max(maxItems, _listLeft1.Count);
-            if (ListBoxLeft2.Visibility == Visibility.Visible) maxItems = Math.Max(maxItems, _listLeft2.Count);
-            if (ListBoxLeft3.Visibility == Visibility.Visible) maxItems = Math.Max(maxItems, _listLeft3.Count);
-            if (ListBoxCenter.Visibility == Visibility.Visible) maxItems = Math.Max(maxItems, _listCenter.Count);
-            if (ListBoxRight.Visibility == Visibility.Visible) maxItems = Math.Max(maxItems, _listRight.Count);
+            foreach (var column in _desktopColumns)
+            {
+                if (column.Panel.Visibility == Visibility.Visible)
+                {
+                    maxItems = Math.Max(maxItems, column.Windows.Count);
+                }
+            }
 
             long countItems = sw.ElapsedMilliseconds;
 
@@ -1086,9 +1145,8 @@ namespace Switcheroo
             {
                 e.Handled = true;
 
-                // 1. Create a list of columns eligible for this specific cycle
-                //    (all visible columns except the pinned column on the right).
-                var cycleableColumns = _visibleListBoxes.Where(lb => lb != ListBoxRight).ToList();
+                // 1. Create a list of columns eligible for this specific cycle.
+                var cycleableColumns = _visibleListBoxes.ToList();
 
                 if (cycleableColumns.Count == 0)
                 {
@@ -1336,16 +1394,9 @@ namespace Switcheroo
 
         private void FilterList(string query)
         {
-            // During search, we only modify the center list.
-            _listCenter.Clear();
-
-            // If a side column was active, switch to the center for search results.
-            int centerIndex = _listBoxes.IndexOf(ListBoxCenter);
-            int visibleCenterIndex = _visibleListBoxes.IndexOf(ListBoxCenter);
-
-            if (_activeColumnIndex != visibleCenterIndex)
+            foreach (var column in _desktopColumns)
             {
-                SetActiveColumn(centerIndex);
+                column.Windows.Clear();
             }
 
             var context = new WindowFilterContext<AppWindowViewModel>
@@ -1356,15 +1407,13 @@ namespace Switcheroo
 
             var filterResultsEnumerable = new WindowFilterer().Filter(context, query);
 
-            // Apply Maximum Result Count limit if enabled
             if (Settings.Default.MaximumResultCountEnabled)
             {
                 filterResultsEnumerable = filterResultsEnumerable.Take(Settings.Default.MaximumResultCount);
             }
 
-            var filterResults = filterResultsEnumerable.ToList();
-
-            foreach (var filterResult in filterResults)
+            var unmatchedWindows = new List<AppWindowViewModel>();
+            foreach (var filterResult in filterResultsEnumerable)
             {
                 if (TitleFormatter.Anonymize)
                 {
@@ -1375,12 +1424,58 @@ namespace Switcheroo
                     filterResult.AppWindow.FormattedTitle = GetFormattedTitleFromBestResult(filterResult.WindowTitleMatchResults);
                 }
                 filterResult.AppWindow.FormattedProcessTitle = GetFormattedTitleFromBestResult(filterResult.ProcessTitleMatchResults);
-                _listCenter.Add(filterResult.AppWindow);
+
+                var desktopId = GetWindowDesktopId(filterResult.AppWindow.HWnd);
+                var column = desktopId.HasValue
+                    ? _desktopColumns.FirstOrDefault(c => c.Desktop.Id == desktopId.Value)
+                    : null;
+
+                if (column != null)
+                {
+                    column.Windows.Add(filterResult.AppWindow);
+                }
+                else
+                {
+                    unmatchedWindows.Add(filterResult.AppWindow);
+                }
             }
 
-            if (ListBoxCenter.Items.Count > 0 && ListBoxCenter.SelectedIndex == -1)
+            if (unmatchedWindows.Count > 0 && _desktopColumns.Count > 0)
             {
-                ListBoxCenter.SelectedIndex = 0;
+                foreach (var window in unmatchedWindows)
+                {
+                    _desktopColumns[0].Windows.Add(window);
+                }
+            }
+
+            if (_visibleListBoxes.Count == 0)
+            {
+                return;
+            }
+
+            int activeVisibleIndex = Math.Min(Math.Max(_activeColumnIndex, 0), _visibleListBoxes.Count - 1);
+            var activeListBox = _visibleListBoxes[activeVisibleIndex];
+
+            if (activeListBox.Items.Count > 0)
+            {
+                if (activeListBox.SelectedItem == null)
+                {
+                    activeListBox.SelectedIndex = 0;
+                }
+                return;
+            }
+
+            for (int offset = 0; offset < _visibleListBoxes.Count; offset++)
+            {
+                int candidateIndex = (activeVisibleIndex + offset) % _visibleListBoxes.Count;
+                var candidate = _visibleListBoxes[candidateIndex];
+                if (candidate.Items.Count > 0)
+                {
+                    SetActiveColumn(_listBoxes.IndexOf(candidate));
+                    candidate.SelectedIndex = 0;
+                    ScrollSelectedItemIntoView();
+                    return;
+                }
             }
         }
 
@@ -1530,21 +1625,16 @@ namespace Switcheroo
 
         /// <summary>
         /// Event handler for the CloseColumn command (e.g., Alt+Shift+W).
-        /// Closes all windows in one of the three leftmost application columns.
+        /// Closes all windows in the active desktop column.
         /// This is a sequential operation that will stop if any window fails to close.
         /// </summary>
         private async void CloseColumn(object sender, ExecutedRoutedEventArgs e)
         {
-            // This command only applies to the three leftmost "app" columns.
             var currentListBox = _visibleListBoxes[_activeColumnIndex];
-            var appListBoxes = new System.Windows.Controls.ListBox[] { ListBoxLeft1, ListBoxLeft2, ListBoxLeft3 };
-            if (appListBoxes.Contains(currentListBox))
+            if (currentListBox.Items.Count > 0)
             {
-                if (currentListBox.Items.Count > 0)
-                {
-                    var windowsToClose = currentListBox.Items.Cast<AppWindowViewModel>().ToList();
-                    await CloseWindowsAsync(windowsToClose, abortOnFailure: true);
-                }
+                var windowsToClose = currentListBox.Items.Cast<AppWindowViewModel>().ToList();
+                await CloseWindowsAsync(windowsToClose, abortOnFailure: true);
             }
             e.Handled = true;
         }
@@ -1616,21 +1706,24 @@ namespace Switcheroo
             // 6. Intelligently determine the new active column and selection.
             int newActiveVisibleIndex;
 
-            // Case A: The original column is still visible and has items.
+            // Case A: The original column still has items.
             if (originalActiveListBox != null && originalActiveListBox.Visibility == Visibility.Visible && originalActiveListBox.HasItems)
             {
                 newActiveVisibleIndex = _visibleListBoxes.IndexOf(originalActiveListBox);
                 int newSelectedIndex = originalSelectedIndex - selectionAdjustment;
                 originalActiveListBox.SelectedIndex = Math.Max(0, Math.Min(newSelectedIndex, originalActiveListBox.Items.Count - 1));
             }
-            else // Case B: The original column disappeared. Find a logical fallback.
+            else
             {
-                // Try to focus on the column that now occupies the original's position, clamping to the new bounds.
-                newActiveVisibleIndex = Math.Min(originalVisibleIndex, _visibleListBoxes.Count - 1);
+                newActiveVisibleIndex = FindNextVisibleColumnWithItems(originalVisibleIndex);
             }
 
             // 7. Activate the determined column and scroll the selection into view.
             SetActiveColumn(_listBoxes.IndexOf(_visibleListBoxes[newActiveVisibleIndex]));
+            if (_visibleListBoxes[newActiveVisibleIndex].SelectedItem == null && _visibleListBoxes[newActiveVisibleIndex].Items.Count > 0)
+            {
+                _visibleListBoxes[newActiveVisibleIndex].SelectedIndex = 0;
+            }
             ScrollSelectedItemIntoView();
         }
 
@@ -1695,11 +1788,10 @@ namespace Switcheroo
 
         private void RemoveWindowFromAllLists(AppWindowViewModel window)
         {
-            _listLeft1.Remove(window);
-            _listLeft2.Remove(window);
-            _listLeft3.Remove(window);
-            _listCenter.Remove(window);
-            _listRight.Remove(window);
+            foreach (var column in _desktopColumns)
+            {
+                column.Windows.Remove(window);
+            }
             _unfilteredWindowList.Remove(window);
         }
 

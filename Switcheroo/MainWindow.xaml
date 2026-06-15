@@ -472,19 +472,6 @@
                     </DataTemplate>
 
                 </Grid.Resources>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition x:Name="ColLeft1" Width="*" />
-                    <ColumnDefinition x:Name="ColLeft2" Width="*" />
-                    <ColumnDefinition x:Name="ColLeft3" Width="*" />
-                    <ColumnDefinition x:Name="ColCenter" Width="*" />
-                    <ColumnDefinition x:Name="ColRight" Width="*" />
-                </Grid.ColumnDefinitions>
-
-                <core:PerformanceListBox GotFocus="ListBox_GotFocus" Grid.Column="0" Name="ListBoxLeft1" Style="{StaticResource ColumnListBoxStyle}" ItemTemplate="{StaticResource WindowItemTemplate}" />
-                <core:PerformanceListBox GotFocus="ListBox_GotFocus" Grid.Column="1" Name="ListBoxLeft2" Style="{StaticResource ColumnListBoxStyle}" ItemTemplate="{StaticResource WindowItemTemplate}" />
-                <core:PerformanceListBox GotFocus="ListBox_GotFocus" Grid.Column="2" Name="ListBoxLeft3" Style="{StaticResource ColumnListBoxStyle}" ItemTemplate="{StaticResource WindowItemTemplate}" />
-                <core:PerformanceListBox GotFocus="ListBox_GotFocus" Grid.Column="3" Name="ListBoxCenter" Style="{StaticResource ColumnListBoxStyle}" ItemTemplate="{StaticResource WindowItemTemplate}" />
-                <core:PerformanceListBox GotFocus="ListBox_GotFocus" Grid.Column="4" Name="ListBoxRight" Style="{StaticResource ColumnListBoxStyle}" ItemTemplate="{StaticResource WindowItemTemplate}" />
 
             </Grid>
         </DockPanel>

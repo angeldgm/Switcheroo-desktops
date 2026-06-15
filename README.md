@@ -1,19 +1,21 @@
-<img src="icons/logo.png" alt="Switcheroo" width="48px" height="48px"> Switcheroo++ [![Build and Release](https://github.com/coezbek/Switcheroo/actions/workflows/release.yml/badge.svg)](https://github.com/coezbek/Switcheroo/actions/workflows/release.yml)
+<img src="icons/logo.png" alt="Switcheroo" width="48px" height="48px"> SwitcherooDesktops [![Build and Release](https://github.com/coezbek/Switcheroo/actions/workflows/release.yml/badge.svg)](https://github.com/coezbek/Switcheroo/actions/workflows/release.yml)
 ==========
 
-Switcheroo++ is Alt-Tab replacement for Windows.
+SwitcherooDesktops is Alt-Tab replacement for Windows.
 
-The idea of this project of to present windows in a column format: the most recent windows in the center column, the most common applications to the left, and pinned windows to the right.
+The idea of this project of to present windows in a column format, with windows grouped by virtual desktop.
 
+SwitcherooDesktops is a fork of [Coezbek's Switcheroo](https://github.com/coezbek/Switcheroo).
 Switcheroo++ is a fork of [Regin Larsen's Switcheroo](https://github.com/kvakulo/Switcheroo).
 
-## Screenshot
+## Screenshots
 
-<img src="icons/screenshot-darkmode.png" alt="Darkmode of Switcheroo in action" width="1198px" height="649px">
+<img src="icons/screenshot-dark.png" alt="Darkmode of Switcheroo" width="1198px" height="649px">
+<img src="icons/screenshot-light.png" alt="Lightmode of Switcheroo" width="1198px" height="649px">
 
 ## Download
 
-**[Download Switcheroo here](https://github.com/coezbek/Switcheroo/releases)**
+**[Download Switcheroo here](https://github.com/angeldgm/Switcheroo-desktops/releases)**
 
 ## Usage
 
@@ -66,6 +68,10 @@ Switcheroo displays windows in five columns:
 - [ ] Theme support.
 - [ ] Fix update checker
 - [ ] Proper logging/crash reporting
+
+## New features in Version 1.0
+
+- [X] Virtual desktops support
 
 ## New features in Version 0.9.7
 
@@ -246,6 +252,10 @@ Switcheroo makes use of these great open source projects:
 
 
 ## Change log
+
+### 2026-06-15: v1.0 ###
+
+- Vitual desktops support
 
 ### 2025-11-13: v0.9.4 ###
 
