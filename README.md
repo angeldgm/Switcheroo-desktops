@@ -24,6 +24,8 @@ Action                         | Shortcut          | Remarks
 Activate Switcheroo            | `Alt + Space`     | This shortcut can be customized in _Options_
 Activate Switcheroo            | `Alt + Tab`       | Only works if enabled under _Options_
 _When Switcheroo is open_      |                   |
+Minimize window                | `Win + Up`        |
+Maximize window                | `Win + Down`      |
 Enter search mode              | `Alt + S`         |
 Switch to selected window      | `Enter`           | Or release `Alt` if opened with `Alt + Tab` and `_altTabAutoSwitch` is enabled in _Options_. Note: independently from `_altTabAutoSwitch`, pressing and release `Alt` will select the currently highlighted window and switch to it.
 Close selected window          | `Alt or Ctrl + W` |
